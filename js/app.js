@@ -20,6 +20,26 @@ var app = (function(){
       fs = shader;
     };
 
+    var _hsva = function (h, s, v, a) {
+      if (s > 1 || v > 1 || a > 1) return;
+      var th = h % 360;
+      var i = Math.floor (th / 60);
+      var f = th / 60 - i;
+      var m = v * (1 -s);
+      var n = v * (1 -s * f);
+      var k = v * (1 -s * (1 - f));
+      var color = [];
+      if (!s > 0 && !s < 0) {
+        color.push (v, v, v, a);
+      } else {
+        var r = [v, n, m, m, k, v];
+        var g = [k, v, v, n, m, m];
+        var b = [m, m, k, v, v, n];
+        color.push (r[i], g[i], b[i], a);
+      }
+      return color;
+    }
+
     // #pragma region - public methods
     this.init = function(w, h, clearColor, depth){
       c = document.getElementById('canvas');
@@ -27,6 +47,12 @@ var app = (function(){
       c.height = h;
 
       gl = c.getContext('webgl') || c.getContext ('experimental-webgl');
+      gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+      gl.clearDepth (depth);
+      gl.clear (gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    }
+
+    this.clearContext = function (clearColor, depth) {
       gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
       gl.clearDepth (depth);
       gl.clear (gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -137,6 +163,16 @@ var app = (function(){
       return vbo;
     }
 
+    this.createIBO = function (data) {
+      var ibo = gl.createBuffer ();
+
+      gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, ibo);
+      gl.bufferData (gl.ELEMENT_ARRAY_BUFFER, new Int16Array(data), gl.STATIC_DRAW);
+      gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, null);
+
+      return ibo;
+    }
+
     this.setShaderAttrib = function (vbo, attL, attS) {
 
       for (var i in vbo) {
@@ -145,6 +181,36 @@ var app = (function(){
         gl.vertexAttribPointer (attL[i], attS[i], gl.FLOAT, false, 0, 0);
       }
 
+    }
+
+    this.createTorus = function (row, column, irad, orad) {
+      var pos = [], col = [], idx = [], nor = [];
+      for (var i=0; i <= row; i++) {
+        var r = Math.PI * 2 / row * i;
+        var rr = Math.cos (r);
+        var ry = Math.sin (r);
+
+        for (var ii=0; ii <= column; ii++) {
+          var tr = Math.PI * 2 / column * ii;
+          var tx = (rr * irad + orad) * Math.cos (tr);
+          var ty = ry * irad;
+          var tz = (rr * irad + orad) * Math.sin (tr);
+          var rx = rr * Math.cos (tr);
+          var rz = rr * Math.sin (tr);
+          pos.push (tx, ty, tz);
+          nor.push (rx, ry, rz);
+          var tc = _hsva (360 / column * ii, 1, 1, 1);
+          col.push (tc[0], tc[1], tc[2], tc[3]);
+        }
+      }
+      for (i = 0; i < row; i++) {
+        for (ii = 0; ii < column; ii++) {
+          r = (column + 1) * i + ii;
+          idx.push (r, r + column + 1, r + 1);
+          idx.push (r + column + 1, r + column + 2, r + 1);
+        }
+      }
+      return [pos, nor, col, idx];
     }
   }
 
@@ -171,33 +237,37 @@ window.onload = function(){
   var fShader = app.createShader ('fragmentShader');
   var prg = app.createProgram (vShader, fShader);
 
-  var attLocation = new Array (2);
+
+  var torusData = app.createTorus (32, 32, 1.0, 2.0);
+  var position = torusData[0];
+  var normal = torusData[1]
+  var color = torusData[2];
+  var index = torusData[3];
+
+  // create VBO
+  var vbos = new Array (3);
+  vbos[0] = app.createVBO (position);
+  vbos[1] = app.createVBO (color);
+  vbos[2] = app.createVBO (normal);
+
+  var attLocation = new Array (3);
   attLocation[0] = gl.getAttribLocation (prg, 'position');
   attLocation[1] = gl.getAttribLocation (prg, 'color');
-  var uniLocation = gl.getUniformLocation (prg, 'mvpMatrix');
+  attLocation[2] = gl.getAttribLocation (prg, 'normal');
 
-  var attStride = new Array (3);
+  var attStride = new Array (2);
   attStride[0] = 3;
   attStride[1] = 4;
-
-  var vertexPosition = [
-    0.0, 1.0, 0.0,
-    1.0, 0.0, 0.0,
-    -1.0, 0.0, 0.0
-  ];
-
-  var vertexColor = [
-    1.0, 0.0, 0.0, 1.0,
-    0.0, 1.0, 0.0, 1.0,
-    0.0, 0.0, 1.0, 1.0
-  ];
-
-  var vbos = new Array (2);
-  vbos[0] = app.createVBO (vertexPosition);
-  vbos[1] = app.createVBO (vertexColor);
-
+  attStride[2] = 3;
   app.setShaderAttrib (vbos, attLocation, attStride);
 
+  // create IBO
+  var ibo = app.createIBO (index);
+  gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, ibo);
+
+  gl.enable (gl.CULL_FACE);
+  gl.enable (gl.DEPTH_TEST);
+  gl.depthFunc (gl.LEQUAL);
   // create mat4 lib instance
   var m = new matIV ();
 
@@ -207,22 +277,19 @@ window.onload = function(){
   var pMatrix = m.identity (m.create ());
   var tmpMatrix = m.identity (m.create ());
   var mvpMatrix = m.identity (m.create ());
+  var invMatrix = m.identity(m.create());
 
-  m.lookAt ([0.0, 1.0, 3.0], [0, 0, 0], [0, 1, 0], vMatrix);
-  m.perspective (90, c.width / c.height, 0.1, 100, pMatrix);
+  m.lookAt ([0.0, 0.0, 20.0], [0, 0, 0], [0, 1, 0], vMatrix);
+  m.perspective (45, c.width / c.height, 0.1, 100, pMatrix);
   m.multiply (pMatrix, vMatrix, tmpMatrix);
-  m.translate (mMatrix, [1.5, 0.0, 0.0], mMatrix);
-  m.multiply (tmpMatrix, mMatrix, mvpMatrix);
+  m.inverse (mMatrix, invMatrix);
 
-  gl.uniformMatrix4fv (uniLocation, false, mvpMatrix);
-  gl.drawArrays (gl.TRIANGLES, 0, 3);
+  var lightDirection = [-0.5, 0.5, 0.5];
 
-  m.identity (mMatrix);
-  m.translate (mMatrix, [-1.5, 0.0, 0.0], mMatrix);
-  m.multiply (tmpMatrix, mMatrix, mvpMatrix);
-
-  gl.uniformMatrix4fv (uniLocation, false, mvpMatrix);
-  gl.drawArrays (gl.TRIANGLES, 0, 3);
+  var uniLocation = [];
+  uniLocation[0] = gl.getUniformLocation (prg, 'mvpMatrix');
+  uniLocation[1] = gl.getUniformLocation (prg, 'invMatrix');
+  uniLocation[2] = gl.getUniformLocation (prg, 'lightDirection');
 
   var count = 0;
 
@@ -231,38 +298,23 @@ window.onload = function(){
   })(window, 'equestAnimationFrame');
 
   (function render () {
-    app.init(300, 300, clearColorArray, 1.0);
+
+    app.clearContext(clearColorArray, 1.0);
     count++;
     var rad = (count % 360) * Math.PI / 180;
 
-    var x = Math.cos (rad);
-    var y = Math.sin (rad);
     m.identity (mMatrix);
-    m.translate (mMatrix, [x, y + 1.0, 0.0], mMatrix);
-
+    m.rotate (mMatrix, rad, [1, 0, 1], mMatrix);
     m.multiply (tmpMatrix, mMatrix, mvpMatrix);
-    gl.uniformMatrix4fv (uniLocation, false, mvpMatrix);
-    gl.drawArrays (gl.TRIANGLES, 0, 3);
+    m.inverse (mMatrix, invMatrix);
 
-    m.identity (mMatrix);
-    m.translate (mMatrix, [1.0, -1.0, 0.0], mMatrix);
-    m.rotate (mMatrix, rad, [0, 1, 0], mMatrix);
+    gl.uniformMatrix4fv (uniLocation[0], false, mvpMatrix);
+    gl.uniformMatrix4fv (uniLocation[1], false, invMatrix);
+    gl.uniform3fv (uniLocation[2], lightDirection);
 
-    m.multiply (tmpMatrix, mMatrix, mvpMatrix);
-    gl.uniformMatrix4fv (uniLocation, false, mvpMatrix);
-    gl.drawArrays (gl.TRIANGLES, 0, 3);
-
-    var s = Math.sin (rad) + 1.0;
-    m.identity (mMatrix);
-    m.translate (mMatrix, [-1.0, -1.0, 0.0], mMatrix);
-    m.scale(mMatrix, [s, s, 0.0], mMatrix);
-
-    m.multiply (tmpMatrix, mMatrix, mvpMatrix);
-    gl.uniformMatrix4fv (uniLocation, false, mvpMatrix);
-    gl.drawArrays (gl.TRIANGLES, 0, 3);
+    gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
 
     gl.flush ();
     animation(render);
   })();
-
 }
