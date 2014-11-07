@@ -285,11 +285,15 @@ window.onload = function(){
   m.inverse (mMatrix, invMatrix);
 
   var lightDirection = [-0.5, 0.5, 0.5];
+  var ambientColor = [0.1, 0.1, 0.1, 1.0];
+  var eyeDirection = [0.0, 0.0, 20.0];
 
   var uniLocation = [];
   uniLocation[0] = gl.getUniformLocation (prg, 'mvpMatrix');
   uniLocation[1] = gl.getUniformLocation (prg, 'invMatrix');
   uniLocation[2] = gl.getUniformLocation (prg, 'lightDirection');
+  uniLocation[3] = gl.getUniformLocation (prg, 'ambientColor');
+  uniLocation[4] = gl.getUniformLocation (prg, 'eyeDirection');
 
   var count = 0;
 
@@ -311,6 +315,8 @@ window.onload = function(){
     gl.uniformMatrix4fv (uniLocation[0], false, mvpMatrix);
     gl.uniformMatrix4fv (uniLocation[1], false, invMatrix);
     gl.uniform3fv (uniLocation[2], lightDirection);
+    gl.uniform4fv (uniLocation[3], ambientColor);
+    gl.uniform3fv (uniLocation[4], eyeDirection);
 
     gl.drawElements(gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
 
