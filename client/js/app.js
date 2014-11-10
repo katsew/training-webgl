@@ -44,7 +44,11 @@ var app = (function(){
     };
 
     // #pragma region - public variables
-    this.texture = null;
+    this.textures = [];
+    this.rangeElement = null;
+    this.rangeText = null;
+    this.isTrans = null;
+    this.isAdd = null;
 
     // #pragma region - public methods
     this.init = function(w, h, clearColor, depth){
@@ -56,6 +60,12 @@ var app = (function(){
       gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
       gl.clearDepth (depth);
       gl.clear (gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      _this.rangeElement = document.getElementById('range');
+      _this.rangeText = document.getElementById('rangeText');
+      _this.rangeText.value = _this.rangeElement.value;
+      _this.isTrans = document.getElementById('isTrans');
+      _this.isAdd = document.getElementById('isAdd');
     };
 
     this.clearContext = function (clearColor, depth) {
@@ -179,17 +189,17 @@ var app = (function(){
       return ibo;
     };
 
-    this.createTexture = function (source) {
+    this.createTexture = function (source, index) {
       var img = new Image ();
 
       img.onload = function () {
-        var tex = gl.createTexture;
+        var tex = gl.createTexture ();
         gl.bindTexture (gl.TEXTURE_2D, tex);
-        gl.texImage2D (gl.TEXTURE_2D, 0, gl.RGBA, gl.UNSIGNED_BYTE, img);
+        gl.texImage2D (gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
         gl.generateMipmap (gl.TEXTURE_2D);
         gl.bindTexture (gl.TEXTURE_2D, null);
 
-        _this.texture = tex;
+        _this.textures[index] = tex;
       }
       img.src = source;
     }
@@ -203,6 +213,19 @@ var app = (function(){
       }
 
     };
+
+    this.setBlendingType = function (prm) {
+      switch (prm) {
+        case 0:
+          gl.blendFunc (gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          break;
+        case 1:
+          gl.blendFunc (gl.SRC_ALPHA, gl.ONE);
+          break;
+        default:
+          break;
+      }
+    }
 
     this.createTorus = function (row, column, irad, orad, color) {
       var pos = [], col = [], idx = [], nor = [];
@@ -271,9 +294,9 @@ var app = (function(){
             }
         }
         return {p : pos, n : nor, c : col, i : idx};
-    }
+    };
 
-  };
+  }; // End of App
 
 
   // return singleton class.
@@ -291,7 +314,7 @@ window.onload = function(){
   // set clear color RGBA
   var clearColorArray = [0.0, 0.0, 0.0, 1.0];
 
-  app.init(500, 300, clearColorArray, 1.0);
+  app.init(800, 600, clearColorArray, 1.0);
   var c = app.getCanvas ();
   var gl = app.getContext ();
   var vShader = app.createShader ('vs');
@@ -301,40 +324,57 @@ window.onload = function(){
   var attLocation = [];
   attLocation[0] = gl.getAttribLocation (prg, 'position');
   attLocation[1] = gl.getAttribLocation (prg, 'color');
-  attLocation[2] = gl.getAttribLocation (prg, 'normal');
+  attLocation[2] = gl.getAttribLocation (prg, 'textureCoord');
 
   var attStride = [];
   attStride[0] = 3;
   attStride[1] = 4;
-  attStride[2] = 3;
+  attStride[2] = 2;
 
+  var position = [
+    -1.0, 1.0, 0.0,
+    1.0, 1.0, 0.0,
+    -1.0, -1.0, 0.0,
+    1.0, -1.0, 0.0
+  ];
 
-  // create torus
-  var torusData = app.createTorus (64, 64, 0.5, 1.5, [0.75, 0.25, 0.25, 1.0]);
-  var tPosition = app.createVBO (torusData.p);
-  var tNormal = app.createVBO (torusData.n);
-  var tColor = app.createVBO (torusData.c);
-  var tVBOList = [tPosition, tColor, tNormal];
-  var tIndex = torusData.i;
-  var tIBO = app.createIBO (tIndex);
+  var color = [
+    1.0, 1.0, 1.0, 1.0,
+    1.0, 1.0, 1.0, 1.0,
+    1.0, 1.0, 1.0, 1.0,
+    1.0, 1.0, 1.0, 1.0
+  ];
 
-  // create sphere
-  var sphereData = app.createSphere (64, 64, 2.0, [0.25, 0.25, 0.75, 1.0]);
-  var sPosition = app.createVBO (sphereData.p);
-  var sNormal = app.createVBO (sphereData.n);
-  var sColor = app.createVBO (sphereData.c);
-  var sVBOList = [sPosition, sColor, sNormal];
-  var sIndex = sphereData.i;
-  var sIBO = app.createIBO (sIndex);
+  var textureCoord = [
+    0.0, 0.0,
+    1.0, 0.0,
+    0.0, 1.0,
+    1.0, 1.0
+  ];
 
+  var index = [
+    0, 1, 2,
+    3, 2, 1
+  ];
+
+  var vPosition = app.createVBO (position);
+  var vColor = app.createVBO (color);
+  var vTextureCoord = app.createVBO (textureCoord);
+  var VBOList = [vPosition, vColor, vTextureCoord];
+  var iIndex = app.createIBO (index);
+
+  app.setShaderAttrib (VBOList, attLocation, attStride);
+  gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, iIndex);
 
   var uniLocation = [];
   uniLocation[0] = gl.getUniformLocation (prg, 'mvpMatrix');
-  uniLocation[1] = gl.getUniformLocation (prg, 'mMatrix');
-  uniLocation[2] = gl.getUniformLocation (prg, 'invMatrix');
-  uniLocation[3] = gl.getUniformLocation (prg, 'lightPosition');
-  uniLocation[4] = gl.getUniformLocation (prg, 'eyeDirection');
-  uniLocation[5] = gl.getUniformLocation (prg, 'ambientColor');
+  uniLocation[1] = gl.getUniformLocation (prg, 'vertexAlpha');
+  uniLocation[2] = gl.getUniformLocation (prg, 'texture');
+  uniLocation[3] = gl.getUniformLocation (prg, 'useTexture');
+
+  gl.activeTexture (gl.TEXTURE0);
+  gl.bindTexture (gl.TEXTURE_2D, app.textures[0]);
+  gl.uniform1i (uniLocation[1], 0);
 
   // create mat4 lib instance
   var m = new matIV ();
@@ -349,17 +389,21 @@ window.onload = function(){
 
   var lightPosition = [0.0, 0.0, 0.0];
   var ambientColor = [0.1, 0.1, 0.1, 1.0];
-  var eyeDirection = [0.0, 0.0, 20.0];
+  var eyeDirection = [0.0, 0.0, 15.0];
 
   m.lookAt (eyeDirection, [0, 0, 0], [0, 1, 0], vMatrix);
   m.perspective (45, c.width / c.height, 0.1, 100, pMatrix);
   m.multiply (pMatrix, vMatrix, tmpMatrix);
 
+  app.createTexture ('./img/test.jpg', 0);
+
   var count = 0;
 
-  gl.enable (gl.CULL_FACE);
+  // gl.enable (gl.CULL_FACE);
+  gl.enable (gl.BLEND);
   gl.enable (gl.DEPTH_TEST);
   gl.depthFunc (gl.LEQUAL);
+  gl.blendFunc (gl.ONE, gl.ZERO);
 
   var animation = (function (w, r) {
     return w['r'+r] = w['r'+r] || w['webkitR'+r] || w['mozR'+r] || w['msR'+r] || w['oR'+r] || function(c){ w.setTimeout(c, 1000 / 60); };
@@ -367,47 +411,49 @@ window.onload = function(){
 
   (function render () {
 
+    var vertexAlpha = parseFloat (app.rangeElement.value / 100);
+    app.rangeText.value = app.rangeElement.value;
+    if (app.isTrans.checked) {
+      app.setBlendingType (0);
+    } else {
+      app.setBlendingType (1);
+    }
     app.clearContext(clearColorArray, 1.0);
+
     count++;
     var rad = (count % 360) * Math.PI / 180;
-    var tx = Math.cos (rad) * 3.5;
-    var ty = Math.sin (rad) * 3.5;
-    var tz = Math.sin (rad) * 3.5;
-
-    // render torus
-    app.setShaderAttrib (tVBOList, attLocation, attStride);
-    gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, tIBO);
-
-    m.identity (mMatrix);
-    m.translate (mMatrix, [tx, -ty, -tz], mMatrix);
-    m.rotate (mMatrix, -rad, [0, 1, 1], mMatrix);
-    m.multiply (tmpMatrix, mMatrix, mvpMatrix);
-    m.inverse (mMatrix, invMatrix);
-
-    gl.uniformMatrix4fv (uniLocation[0], false, mvpMatrix);
-    gl.uniformMatrix4fv (uniLocation[1], false, mMatrix);
-    gl.uniformMatrix4fv (uniLocation[2], false, invMatrix);
-    gl.uniform3fv (uniLocation[3], lightPosition);
-    gl.uniform3fv (uniLocation[4], eyeDirection);
-    gl.uniform4fv (uniLocation[5], ambientColor);
-    gl.drawElements(gl.TRIANGLES, torusData.i.length, gl.UNSIGNED_SHORT, 0);
 
 
-    // render sphere
-    app.setShaderAttrib (sVBOList, attLocation, attStride);
-    gl.bindBuffer (gl.ELEMENT_ARRAY_BUFFER, sIBO);
-
-    m.identity (mMatrix);
-    m.translate(mMatrix, [-tx, ty, tz], mMatrix);
+    m.identity(mMatrix);
+    m.translate(mMatrix, [0.25, 0.25, -0.25], mMatrix);
+    m.rotate (mMatrix, rad, [0, 1, 0], mMatrix);
     m.multiply(tmpMatrix, mMatrix, mvpMatrix);
-    m.inverse(mMatrix, invMatrix);
+    
+    gl.bindTexture (gl.TEXTURE_2D, app.textures[0]);
+    gl.disable(gl.BLEND);
 
     gl.uniformMatrix4fv (uniLocation[0], false, mvpMatrix);
-    gl.uniformMatrix4fv (uniLocation[1], false, mMatrix);
-    gl.uniformMatrix4fv (uniLocation[2], false, invMatrix);
-    gl.drawElements (gl.TRIANGLES, sphereData.i.length, gl.UNSIGNED_SHORT, 0);
+    gl.uniform1f (uniLocation[1], 1.0);
+    gl.uniform1i (uniLocation[2], 0);
+    gl.uniform1i (uniLocation[3], true);
+    gl.drawElements (gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
+
+    m.identity(mMatrix);
+    m.translate(mMatrix, [-0.25, -0.25, 0.25], mMatrix);
+    m.rotate (mMatrix, rad, [0, 0, 1], mMatrix);
+    m.multiply(tmpMatrix, mMatrix, mvpMatrix);
+
+    gl.bindTexture (gl.TEXTURE_2D, null);
+    gl.enable (gl.BLEND);
+
+    gl.uniformMatrix4fv (uniLocation[0], false, mvpMatrix);
+    gl.uniform1f (uniLocation[1], vertexAlpha);
+    gl.uniform1i (uniLocation[2], 0);
+    gl.uniform1i (uniLocation[3], false);
+    gl.drawElements (gl.TRIANGLES, index.length, gl.UNSIGNED_SHORT, 0);
 
     gl.flush ();
     animation(render);
+
   })();
 }
